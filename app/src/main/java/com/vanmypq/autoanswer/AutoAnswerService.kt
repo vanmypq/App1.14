@@ -99,6 +99,7 @@ class AutoAnswerService : AccessibilityService() {
     private var finished = false
     private var warnedBlack = false
     private var nextScrollUnits = 0      // mức kéo trang do AI/ước tính đề nghị cho lần cuộn kế (0..1000 theo chiều cao, âm = kéo lên)
+    private var visionNavPt: Pair<Int, Int>? = null   // nút "Câu sau" do AI chỉ trên ảnh (chỉ khi trang đã làm xong và không cần cuộn)
     private var visionPending = false    // lần nhìn ảnh gần nhất còn câu chưa làm
     private var visionRetry = 0
     private var visionHint = ""        // gợi ý cho lần nhìn lại: các câu đã hiện trọn nhưng chưa được chọn
@@ -423,7 +424,7 @@ class AutoAnswerService : AccessibilityService() {
         val now = SystemClock.uptimeMillis()
         if (now - lastActivity < settleMs || now < navCooldown) return
         if (!navAllowed()) return
-        if (optScroll && !bottomReached) {
+        if (optScroll && !bottomReached && !(visionNavPt != null && !visionPending)) {
             navBusy = true; navStart = now
             var units = if (nextScrollUnits != 0) nextScrollUnits else guidedUnits(items)
             nextScrollUnits = 0
@@ -447,6 +448,19 @@ class AutoAnswerService : AccessibilityService() {
     private fun goNext(items: List<Item>, h: Int) {
         val allowSubmit = cfg().getBoolean("submit", false)
         val btn = findNavButton(items, nextRe) ?: (if (allowSubmit) findNavButton(items, submitRe) else null)
+        val np = visionNavPt
+        if (btn == null && np != null) {
+            visionNavPt = null
+            if (h == navFromSig) navSame++ else { navFromSig = h; navSame = 0 }
+            if (navSame >= 2) { finishRun("không qua được trang tiếp"); return }
+            val dm = realMetrics()
+            val qx = (np.first / 1000f * dm.widthPixels).toInt()
+            val qy = (np.second / 1000f * dm.heightPixels).toInt()
+            navBusy = true; navStart = SystemClock.uptimeMillis()
+            setStatus("qua câu kế (theo ảnh)")
+            tap(Rect(qx - 1, qy - 1, qx + 1, qy + 1)) { afterNav() }
+            return
+        }
         if (btn == null) {
             if (cfg().getBoolean("swipe", false) && h != swipeFromSig) {
                 swipeFromSig = h
@@ -547,6 +561,7 @@ class AutoAnswerService : AccessibilityService() {
         slowHashes.clear()
         visionHashes.clear()
         visionPending = false
+        visionNavPt = null
         visionRetry = 0
         visionHint = ""
         upBudget = 2
@@ -994,10 +1009,12 @@ class AutoAnswerService : AccessibilityService() {
             val cuon = res.cuon
             val retryFlag = res.retry
             val pendingFlag = res.pending
+            val navPtRes = res.nav
             val err = gotErr
             handler.post {
                 busy = false
                 markActive()
+                visionNavPt = null
                 if (err != null) {
                     lastHash = 0
                     if (err.contains("đen")) {
@@ -1021,6 +1038,7 @@ class AutoAnswerService : AccessibilityService() {
                 staleCount = 0
                 nextScrollUnits = cuon
                 visionPending = pendingFlag
+                visionNavPt = navPtRes
                 if (retryFlag && visionRetry < 1) {
                     // Có câu hiện trọn nhưng AI chưa cho đủ thông tin chắc chắn: nhìn lại một lần trước khi chạm/cuộn.
                     visionRetry++
