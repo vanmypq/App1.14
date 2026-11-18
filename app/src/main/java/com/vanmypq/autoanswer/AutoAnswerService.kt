@@ -165,10 +165,10 @@ class AutoAnswerService : AccessibilityService() {
 
     private val nextRe = Regex(
         "(?i)^\\s*(›|»|>|>>|→|tiếp( theo| tục)?|câu (tiếp( theo)?|sau)|trang (tiếp( theo)?|sau)|bài (tiếp( theo)?|sau)|" +
-            "next( page| question)?|continue|sau|chuyển câu|qua câu|kiểm tra|xác nhận|check|confirm)\\s*(›|»|>|→)?\\s*$"
+            "next( page| question)?|continue|sau|chuyển câu|qua câu|kiểm tra|xác nhận|check|confirm)\\s*(›|»|>|→|▶|►|▸)?\\s*$"
     )
     private val prevRe = Regex(
-        "(?i)^\\s*(‹|«|<|<<|←|trước|câu trước|trang trước|bài trước|previous( page| question)?|prev|back|quay lại)\\s*$"
+        "(?i)^\\s*(◀|◄|◂)?\\s*(‹|«|<|<<|←|trước|câu trước|trang trước|bài trước|previous( page| question)?|prev|back|quay lại)\\s*$"
     )
     private val submitRe = Regex(
         "(?i)^\\s*(nộp bài|hoàn thành|hoàn tất|kết thúc|gửi bài|submit|finish|done)\\s*$"
@@ -1085,7 +1085,8 @@ class AutoAnswerService : AccessibilityService() {
     // ô nào chưa thì bấm lại một lần vào chữ của phương án (nhãn của ô thường cũng bấm được).
     // Dạng THẺ (huy hiệu chữ A/B/C/D): kiểm tra bằng cách so màu huy hiệu/nền thẻ giữa các phương án (selectionCard).
     private fun tapState(t: ClaudeClient.VTap): Int? =
-        if (t.card) CaptureService.selectionCard(t.x, t.sib)?.getOrNull(t.idx)
+        if (t.sibX.isNotEmpty()) CaptureService.selectionButtons(t.sibX, t.sib)?.getOrNull(t.idx)
+        else if (t.card) CaptureService.selectionCard(t.x, t.sib)?.getOrNull(t.idx)
         else CaptureService.selectionAt(t.x, t.y)
 
     private fun tapPoints(pts: List<ClaudeClient.VTap>, i: Int, round: Int = 0) {
@@ -1098,7 +1099,7 @@ class AutoAnswerService : AccessibilityService() {
                     val bad = pts.filterIndexed { k, _ -> st[k] == 0 }
                     if (bad.isNotEmpty()) {
                         navNote("chạm chưa trúng ${bad.size} ô, bấm lại")
-                        tapPoints(bad.map { it.copy(x = minOf(it.x + 160, 700)) }, 0, 1)
+                        tapPoints(bad.map { if (it.sibX.isNotEmpty()) it else it.copy(x = minOf(it.x + 160, 700)) }, 0, 1)
                     } else {
                         finishTaps(st.any { it == 2 })
                     }
