@@ -93,3 +93,7 @@ v1.9.14: THÊM DẠNG TRẮC NGHIỆM "THẺ" (mỗi phương án là thẻ bo t
   - Kiểm tra sau khi chạm + bấm lại vào chữ phương án nếu chưa trúng, dùng cùng cách so màu này.
   - Nút qua trang nhận thêm: Kiểm tra / Xác nhận / Check / Confirm.
   - Dạng ô tròn/radio cũ vẫn chạy như 1.9.13 (the=false).
+v1.9.15: TĂNG TỐC + CHÍNH XÁC HƠN.
+  - Chế độ nhìn ảnh luôn ưu tiên model Flash đầy đủ (Lite chỉ là dự phòng); AI ghi lý do/phép tính cực ngắn ("tinh") TRƯỚC khi chọn, kể cả chế độ Nhanh.
+  - Ảnh chế độ Nhanh 1100px (chữ có dấu rõ hơn). Chọn sai (thẻ/ô đỏ) được chọn lại tới 3 lần mỗi câu, tối đa 60 lần mỗi lượt chạy (trước là 12).
+  - Bớt thời gian chờ cố định: vòng quét 70ms, chờ yên màn hình 150ms, kiểm tra sau chạm 180ms, nhịp kiểm tra cuộn 60ms.
