@@ -185,7 +185,7 @@ class CaptureService : Service() {
                     fun edge(yq: Int): IntArray {
                         val cy = (yq * h / 1000).coerceIn(3, h - 4)
                         val x0 = ((xu - 130) * w / 1000).coerceIn(3, w - 4)
-                        val x1 = ((xu - 50) * w / 1000).coerceIn(3, w - 4)
+                        val x1 = ((xu - 70) * w / 1000).coerceIn(3, w - 4)
                         var best = intArrayOf(255, 255, 255)
                         var bl = 1000
                         for (cx in x0..x1) {
@@ -203,13 +203,17 @@ class CaptureService : Service() {
                     val edg = ArrayList<IntArray>()
                     for (yu in ysu) {
                         badge.add(med(px(xu, yu - 13), px(xu, yu + 13), px(xu - 24, yu), px(xu + 24, yu)))
-                        gap.add(px(xu - 60, yu))
+                        gap.add(px(xu - 72, yu))
                         edg.add(edge(yu))
                     }
                     fun sat(c: IntArray) = maxOf(c[0], c[1], c[2]) - minOf(c[0], c[1], c[2])
                     fun lum(c: IntArray) = (c[0] + c[1] + c[2]) / 3
-                    fun emph(i: Int) = sat(badge[i]) + (255 - lum(badge[i])) / 2 + sat(gap[i]) + (255 - lum(gap[i])) / 2 + sat(edg[i]) + (255 - lum(edg[i])) / 2
                     fun dist(a: IntArray, b: IntArray) = Math.abs(a[0] - b[0]) + Math.abs(a[1] - b[1]) + Math.abs(a[2] - b[2])
+                    // Huy hiệu mỗi phương án một màu (A đỏ, B xanh, C vàng, D lục...): màu huy hiệu không nói lên đã chọn hay chưa,
+                    // chỉ dựa vào nền thẻ + viền thẻ. Huy hiệu cùng màu (xám nhạt/tím nhạt) thì vẫn dùng như cũ.
+                    var uni = true
+                    for (i in 0 until n) for (j in i + 1 until n) if (dist(badge[i], badge[j]) > 40) uni = false
+                    fun emph(i: Int) = (if (uni) sat(badge[i]) + (255 - lum(badge[i])) / 2 else 0) + sat(gap[i]) + (255 - lum(gap[i])) / 2 + sat(edg[i]) + (255 - lum(edg[i])) / 2
                     var base = 0
                     for (i in 1 until n) if (emph(i) < emph(base)) base = i
                     val out = IntArray(n)
@@ -217,13 +221,96 @@ class CaptureService : Service() {
                         val bd = badge[i]
                         val gp = gap[i]
                         val ed = edg[i]
-                        val red = (bd[0] > 150 && bd[0] - bd[1] > 60 && bd[0] - bd[2] > 60) ||
+                        val red = (uni && bd[0] > 150 && bd[0] - bd[1] > 60 && bd[0] - bd[2] > 60) ||
                             (gp[0] > 235 && gp[0] - gp[1] > 16 && gp[0] - gp[2] > 16) ||
                             (ed[0] > 150 && ed[0] - ed[1] > 60 && ed[0] - ed[2] > 60)
                         out[i] = when {
                             red -> 2
-                            sat(bd) > 70 && lum(bd) < 200 -> 1
-                            i != base && (dist(bd, badge[base]) > 45 || dist(gp, gap[base]) > 24 || dist(ed, edg[base]) > 30) -> 1
+                            uni && sat(bd) > 70 && lum(bd) < 200 -> 1
+                            i != base && ((uni && dist(bd, badge[base]) > 45) || dist(gp, gap[base]) > 24 || dist(ed, edg[base]) > 30) -> 1
+                            else -> 0
+                        }
+                    }
+                    out
+                } catch (e: Exception) {
+                    null
+                }
+            }
+        }
+
+        // Dạng ĐÚNG/SAI: mỗi ý có hai nút bo tròn nằm ngang (Đúng | Sai), không có ô tròn. Lấy màu nền bên trong nút (4 điểm né chữ, trung vị)
+        // và màu viền trên của nút, so hai nút với nhau: nút nào đổi màu rõ rệt = đã chọn. Trả 0/1/2 (2 = đỏ) từng nút, null nếu chưa có ảnh.
+        fun selectionButtons(xsu: List<Int>, ysu: List<Int>): IntArray? {
+            if (reader == null || xsu.size < 2 || xsu.size != ysu.size) return null
+            return synchronized(lock) {
+                val image = latest ?: return@synchronized null
+                try {
+                    val plane = image.planes[0]
+                    val buf = plane.buffer
+                    val rs = plane.rowStride
+                    val ps = plane.pixelStride
+                    fun px(xq: Int, yq: Int): IntArray {
+                        val cx = (xq * w / 1000).coerceIn(3, w - 4)
+                        val cy = (yq * h / 1000).coerceIn(3, h - 4)
+                        var r = 0
+                        var g = 0
+                        var b = 0
+                        var n = 0
+                        for (dy in -2..2 step 2) {
+                            for (dx in -2..2 step 2) {
+                                val o = (cy + dy) * rs + (cx + dx) * ps
+                                r += buf.get(o).toInt() and 0xff
+                                g += buf.get(o + 1).toInt() and 0xff
+                                b += buf.get(o + 2).toInt() and 0xff
+                                n++
+                            }
+                        }
+                        return intArrayOf(r / n, g / n, b / n)
+                    }
+                    fun med(a: IntArray, b: IntArray, c: IntArray, d: IntArray): IntArray = IntArray(3) { k ->
+                        val v = intArrayOf(a[k], b[k], c[k], d[k]); v.sort(); (v[1] + v[2]) / 2
+                    }
+                    // Viền trên của nút: quét dọc một cột ở giữa nút, lấy điểm tối nhất.
+                    fun edge(xq: Int, yq: Int): IntArray {
+                        val cx = (xq * w / 1000).coerceIn(3, w - 4)
+                        val y0 = ((yq - 40) * h / 1000).coerceIn(3, h - 4)
+                        val y1 = ((yq - 24) * h / 1000).coerceIn(3, h - 4)
+                        var best = intArrayOf(255, 255, 255)
+                        var bl = 1000
+                        for (cy in y0..y1) {
+                            val o = cy * rs + cx * ps
+                            val r = buf.get(o).toInt() and 0xff
+                            val g = buf.get(o + 1).toInt() and 0xff
+                            val b = buf.get(o + 2).toInt() and 0xff
+                            if (r + g + b < bl) { bl = r + g + b; best = intArrayOf(r, g, b) }
+                        }
+                        return best
+                    }
+                    val n = xsu.size
+                    val fill = ArrayList<IntArray>()
+                    val edg = ArrayList<IntArray>()
+                    for (i in 0 until n) {
+                        val cx = xsu[i]
+                        val cy = ysu[i]
+                        fill.add(med(px(cx - 150, cy), px(cx + 150, cy), px(cx, cy - 22), px(cx, cy + 22)))
+                        edg.add(edge(cx, cy))
+                    }
+                    fun sat(c: IntArray) = maxOf(c[0], c[1], c[2]) - minOf(c[0], c[1], c[2])
+                    fun lum(c: IntArray) = (c[0] + c[1] + c[2]) / 3
+                    fun dist(a: IntArray, b: IntArray) = Math.abs(a[0] - b[0]) + Math.abs(a[1] - b[1]) + Math.abs(a[2] - b[2])
+                    fun emph(i: Int) = sat(fill[i]) + (255 - lum(fill[i])) / 2 + sat(edg[i]) + (255 - lum(edg[i])) / 2
+                    var base = 0
+                    for (i in 1 until n) if (emph(i) < emph(base)) base = i
+                    val out = IntArray(n)
+                    for (i in 0 until n) {
+                        val f = fill[i]
+                        val ed = edg[i]
+                        val red = (f[0] > 150 && f[0] - f[1] > 60 && f[0] - f[2] > 60) ||
+                            (ed[0] > 150 && ed[0] - ed[1] > 60 && ed[0] - ed[2] > 60)
+                        out[i] = when {
+                            red -> 2
+                            sat(f) > 70 && lum(f) < 200 -> 1
+                            i != base && (dist(f, fill[base]) > 45 || dist(ed, edg[base]) > 30) -> 1
                             else -> 0
                         }
                     }
