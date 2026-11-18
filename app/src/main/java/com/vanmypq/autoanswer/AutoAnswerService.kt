@@ -86,7 +86,7 @@ class AutoAnswerService : AccessibilityService() {
 
 
     // ===== CUỘN TRANG / QUA TRANG (v1.9) =====
-    private val settleMs = 250L
+    private val settleMs = 150L
     private var lastActivity = 0L
     private var navCooldown = 0L
     private var navBusy = false
@@ -243,10 +243,10 @@ class AutoAnswerService : AccessibilityService() {
         val r = object : Runnable {
             override fun run() {
                 val ok = cond()
-                if (ok || SystemClock.uptimeMillis() - t0 >= maxMs) done(ok) else handler.postDelayed(this, 100)
+                if (ok || SystemClock.uptimeMillis() - t0 >= maxMs) done(ok) else handler.postDelayed(this, 60)
             }
         }
-        handler.postDelayed(r, 100)
+        handler.postDelayed(r, 60)
     }
 
     // Kéo trang CHÍNH XÁC một đoạn (đơn vị 0..1000 chiều cao màn hình): kéo rồi giữ yên ngón tay một chút để trang
@@ -488,7 +488,7 @@ class AutoAnswerService : AccessibilityService() {
         override fun run() {
             if (!auto) return
             tick()
-            handler.postDelayed(this, 100)
+            handler.postDelayed(this, 70)
         }
     }
 
@@ -1047,8 +1047,8 @@ class AutoAnswerService : AccessibilityService() {
     // red = có ô vừa chạm bị chấm SAI (chấm đỏ): chưa cuộn đi mà nhìn lại ngay màn hình này để chọn lại phương án khác.
     private fun finishTaps(red: Boolean = false) {
         tapping = false
-        cooldownUntil = SystemClock.uptimeMillis() + 100
-        if (red && redRounds < 3 && redTotal < 12) {
+        cooldownUntil = SystemClock.uptimeMillis() + 50
+        if (red && redRounds < 3 && redTotal < 60) {
             redRounds++
             redTotal++
             navNote("ô vừa chọn bị chấm SAI, chọn lại ($redRounds)")
@@ -1084,7 +1084,7 @@ class AutoAnswerService : AccessibilityService() {
                     } else {
                         finishTaps(st.any { it == 2 })
                     }
-                }, 280)
+                }, 180)
             } else {
                 finishTaps()
             }
@@ -1259,7 +1259,7 @@ class AutoAnswerService : AccessibilityService() {
             // Vừa chạm xong ở chế độ nhìn ảnh: coi như đã đứng yên đủ lâu để cuộn ngay.
             lastActivity = SystemClock.uptimeMillis() - (if (fastAdvance) settleMs else 0L)
             fastAdvance = false
-        }, 100)
+        }, 60)
     }
 
     private fun clickNode(n: AccessibilityNodeInfo?) {
