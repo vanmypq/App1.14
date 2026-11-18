@@ -273,7 +273,7 @@ Liệt kê MỌI câu xuất hiện trong ảnh (kể cả câu chỉ hiện m�
 - "ys": toạ độ y của tâm ô tròn (hoặc tâm huy hiệu chữ cái) của TỪNG phương án nhìn thấy, theo thứ tự từ trên xuống (tăng dần): phần tử thứ 1 là A, thứ 2 là B... Hãy đo riêng từng phương án (phương án dài 2 dòng thì khoảng cách lớn hơn). Làm cho MỌI câu, kể cả câu đã chọn hoặc chưa hiện đủ.
 Mọi toạ độ là số nguyên 0..1000 theo ảnh (x: 0 = mép trái, 1000 = mép phải; y: 0 = mép trên, 1000 = mép dưới).
 Chỉ liệt kê phần câu hỏi trắc nghiệm; bỏ qua thanh địa chỉ, nút Kết thúc / Nộp bài / Tiếp theo / Xem lại và các dòng thông báo không thuộc câu hỏi."""
-        .replace("@@TINH@@", if (fast) "" else "- \"tinh\": CHỈ khi câu hiện đủ và chưa chọn: lý do cực ngắn (tối đa 12 từ); còn lại để \"\".\n")
+        .replace("@@TINH@@", "- \"tinh\": CHỈ khi câu hiện đủ và chưa chọn: viết lý do/phép tính cực ngắn (tối đa " + (if (fast) "10" else "12") + " từ) NGAY TRƯỚC khi chọn \"chon\", đối chiếu từng phương án với kiến thức chuẩn (SGK, pháp luật Việt Nam); còn lại để \"\".\n")
 
     private fun strProp() = JSONObject().put("type", "STRING")
     private fun intProp() = JSONObject().put("type", "INTEGER")
@@ -292,12 +292,11 @@ Chỉ liệt kê phần câu hỏi trắc nghiệm; bỏ qua thanh địa chỉ,
         if (mode == 0) gen.put("thinkingConfig", JSONObject().put("thinkingBudget", if (fast) 0 else 1024))
         if (mode == 1) gen.put("thinkingConfig", JSONObject().put("thinkingLevel", "low"))
         if (mode < 3) {
-            val names = if (fast) listOf("so", "dc", "dau", "cuoi", "chon", "the", "x", "ys")
-                        else listOf("so", "dc", "dau", "cuoi", "tinh", "chon", "the", "x", "ys")
+            val names = listOf("so", "dc", "dau", "cuoi", "tinh", "chon", "the", "x", "ys")
             val props = JSONObject().put("so", strProp()).put("dc", boolProp()).put("dau", intProp()).put("cuoi", intProp())
                 .put("chon", strProp()).put("the", boolProp()).put("x", intProp())
                 .put("ys", JSONObject().put("type", "ARRAY").put("items", intProp()))
-            if (!fast) props.put("tinh", strProp())
+            props.put("tinh", strProp())
             val item = JSONObject().put("type", "OBJECT").put("properties", props)
                 .put("propertyOrdering", JSONArray(names))
                 .put("required", JSONArray(names))
@@ -450,7 +449,7 @@ Chỉ liệt kê phần câu hỏi trắc nghiệm; bỏ qua thanh địa chỉ,
         var attempts = 0
         while (attempts < 20) {
             val base0 = models ?: DEFAULT_MODELS
-            val base = if (fast) base0.sortedBy { if (it.contains("lite")) 0 else 1 } else base0
+            val base = if (fast && !tag.startsWith("vision")) base0.sortedBy { if (it.contains("lite")) 0 else 1 } else base0
             val now = System.currentTimeMillis()
             var pm: String? = null
             var pk: String? = null
@@ -505,7 +504,7 @@ Chỉ liệt kê phần câu hỏi trắc nghiệm; bỏ qua thanh địa chỉ,
     // CHẾ ĐỘ NHÌN ẢNH: dùng khi cây giao diện không đưa nội dung trang web (không có ô chọn để chạm theo [id]).
     // AI đọc ảnh chụp, liệt kê các câu đang hiện (đủ/thiếu, đã chọn/chưa) và chọn đáp án; app tự quyết định chạm và kéo trang.
     fun askVision(apiKey: String, fast: Boolean, allowUp: Boolean = true, hint: String = ""): VResult {
-        val img = (try { CaptureService.grab(if (fast) 960 else 0) } catch (e: Exception) { null })
+        val img = (try { CaptureService.grab(if (fast) 1100 else 0) } catch (e: Exception) { null })
             ?: throw RuntimeException(if (CaptureService.blackFrame) "Ảnh chụp bị đen (app chặn chụp màn hình)" else "Chưa có ảnh chụp màn hình (hãy bật 📷)")
         val (m, mode, resp) = callModels(apiKey, "vision|$fast", fast) { md -> visionBody(img, md, fast, hint) }
         val text = replyText(resp)
@@ -519,7 +518,7 @@ Chỉ liệt kê phần câu hỏi trắc nghiệm; bỏ qua thanh địa chỉ,
     // Mở sẵn kết nối HTTPS khi bật nút AI để câu đầu tiên không mất thời gian bắt tay TLS.
     fun warmUp(apiKey: String, fast: Boolean = true) {
         // Chuẩn bị sẵn ảnh chụp (mã hoá JPEG) để lần hỏi đầu tiên không mất thời gian này.
-        try { if (CaptureService.isRunning()) CaptureService.grab(if (fast) 960 else 0) } catch (e: Exception) { }
+        try { if (CaptureService.isRunning()) CaptureService.grab(if (fast) 1100 else 0) } catch (e: Exception) { }
         try {
             val c = URL("$BASE/models/gemini-flash-lite-latest").openConnection() as HttpURLConnection
             c.connectTimeout = 5000
