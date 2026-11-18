@@ -268,6 +268,7 @@ Liệt kê MỌI câu xuất hiện trong ảnh (kể cả câu chỉ hiện m�
 - "dau": toạ độ y mép trên dòng số thứ tự/tiêu đề của câu (không có số thì lấy mép trên dòng đầu của đề bài); -1 nếu dòng đó đã bị cắt mất ở mép trên của ảnh.
 - "cuoi": toạ độ y mép dưới phương án cuối cùng nhìn thấy; ghi 1000 nếu phương án cuối bị cắt hoặc nằm sát đáy ảnh (cách đáy dưới 8% chiều cao ảnh, vì có thể còn phương án khác nằm ngoài ảnh).
 @@TINH@@- "chon": CHỈ khi câu hiện đủ (thấy dòng tiêu đề và đủ mọi phương án) và chưa chọn (dc=false): chữ cái A, B, C, D... của phương án ĐÚNG NHẤT theo thứ tự từ trên xuống. Câu phủ định (KHÔNG PHẢI/SAI/NGOẠI TRỪ) chọn phương án không thỏa điều kiện; câu lý thuyết vẫn phải chọn phương án phù hợp NHẤT, không được bỏ trống. Các trường hợp khác để "".
+- "nx", "ny" (nằm NGOÀI mảng "cau", ở cuối JSON): toạ độ x, y tâm nút chuyển sang câu/trang kế (như "Câu sau", "Tiếp theo", "Tiếp tục", mũi tên >) đang hiện trên màn hình; KHÔNG tính nút "Nộp bài", "Hoàn thành", "Kết thúc", "Câu trước"; không có nút đó thì ghi -1 cho cả hai.
 - "the": true nếu các phương án là THẺ/NÚT bo tròn có huy hiệu chữ cái A, B, C, D (không có ô tròn rỗng để tích); false nếu là ô tròn/ô vuông/radio để tích.
 - "x": toạ độ x của tâm các ô tròn/ô vuông phương án, hoặc tâm huy hiệu chữ cái ở bên trái thẻ (cùng một cột).
 - "ys": toạ độ y của tâm ô tròn (hoặc tâm huy hiệu chữ cái) của TỪNG phương án nhìn thấy, theo thứ tự từ trên xuống (tăng dần): phần tử thứ 1 là A, thứ 2 là B... Hãy đo riêng từng phương án (phương án dài 2 dòng thì khoảng cách lớn hơn). Làm cho MỌI câu, kể cả câu đã chọn hoặc chưa hiện đủ.
@@ -281,7 +282,7 @@ Chỉ liệt kê phần câu hỏi trắc nghiệm; bỏ qua thanh địa chỉ,
 
     // taps: các điểm cần chạm; cuon: mức cần kéo trang tiếp theo (đơn vị 0..1000 chiều cao màn hình, âm = kéo ngược lên);
     // retry: AI chưa cho đủ thông tin chắc chắn cho một câu đã hiện trọn -> nên nhìn lại; pending: còn câu chưa làm.
-    data class VResult(val taps: List<VTap>, val cuon: Int, val retry: Boolean = false, val pending: Boolean = false, val hint: String = "")
+    data class VResult(val taps: List<VTap>, val cuon: Int, val retry: Boolean = false, val pending: Boolean = false, val hint: String = "", val nav: Pair<Int, Int>? = null)
 
     private fun visionBody(img: String, mode: Int, fast: Boolean, hint: String = ""): JSONObject {
         val parts = JSONArray()
@@ -302,8 +303,9 @@ Chỉ liệt kê phần câu hỏi trắc nghiệm; bỏ qua thanh địa chỉ,
                 .put("required", JSONArray(names))
             gen.put("responseMimeType", "application/json")
             gen.put("responseSchema", JSONObject().put("type", "OBJECT")
-                .put("properties", JSONObject().put("cau", JSONObject().put("type", "ARRAY").put("items", item)))
-                .put("required", JSONArray(listOf("cau"))))
+                .put("properties", JSONObject().put("cau", JSONObject().put("type", "ARRAY").put("items", item)).put("nx", intProp()).put("ny", intProp()))
+                .put("propertyOrdering", JSONArray(listOf("cau", "nx", "ny")))
+                .put("required", JSONArray(listOf("cau", "nx", "ny"))))
         }
         return JSONObject()
             .put("systemInstruction", JSONObject().put("parts", JSONArray().put(JSONObject().put("text", visionRules(fast)))))
@@ -325,11 +327,16 @@ Chỉ liệt kê phần câu hỏi trắc nghiệm; bỏ qua thanh địa chỉ,
         val need = ArrayList<String>()
         var retry = false
         var pending = false
+        var navPt: Pair<Int, Int>? = null
         try {
             val a = text.indexOf('{')
             val b = text.lastIndexOf('}')
             if (a >= 0 && b > a) {
-                val arr = JSONObject(text.substring(a, b + 1)).optJSONArray("cau")
+                val root = JSONObject(text.substring(a, b + 1))
+                val nxv = root.optInt("nx", -1)
+                val nyv = root.optInt("ny", -1)
+                if (nxv in 0..1000 && nyv in 0..1000) navPt = Pair(nxv, nyv)
+                val arr = root.optJSONArray("cau")
                 if (arr != null) {
                     for (i in 0 until arr.length()) {
                         val o = arr.optJSONObject(i) ?: continue
@@ -417,7 +424,14 @@ Chỉ liệt kê phần câu hỏi trắc nghiệm; bỏ qua thanh địa chỉ,
             if (last != null) cuon = (maxOf(last.bottom, last.lastY + 25) - ANCHOR_Y).coerceIn(120, 850)
             else if (blocks.isNotEmpty()) cuon = (blocks.maxOf { it.bottom } - 60).coerceIn(350, 800)
         }
-        return VResult(taps.sortedBy { it.y }, cuon, retry, pending, need.joinToString(" "))
+        // Trang chỉ có một câu và đã làm xong, nút "Câu sau" nằm dưới câu: không cần cuộn, bấm thẳng nút đó.
+        var navOut: Pair<Int, Int>? = null
+        val np = navPt
+        if (np != null && inc.isEmpty() && blocks.isNotEmpty() && !pending) {
+            val lastB = blocks.maxOf { it.bottom }
+            if (lastB <= 920 && np.second > lastB) { navOut = np; cuon = 0 }
+        }
+        return VResult(taps.sortedBy { it.y }, cuon, retry, pending, need.joinToString(" "), navOut)
     }
 
     // ---------- Chọn model / key: bỏ qua model đang hết hạn mức, hỗ trợ nhiều API key ----------
@@ -449,7 +463,7 @@ Chỉ liệt kê phần câu hỏi trắc nghiệm; bỏ qua thanh địa chỉ,
         var attempts = 0
         while (attempts < 20) {
             val base0 = models ?: DEFAULT_MODELS
-            val base = if (fast && !tag.startsWith("vision")) base0.sortedBy { if (it.contains("lite")) 0 else 1 } else base0
+            val base = if (fast) base0.sortedBy { if (it.contains("lite")) 0 else 1 } else base0
             val now = System.currentTimeMillis()
             var pm: String? = null
             var pk: String? = null
