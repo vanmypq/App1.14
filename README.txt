@@ -97,3 +97,13 @@ v1.9.15: TĂNG TỐC + CHÍNH XÁC HƠN.
   - Chế độ nhìn ảnh luôn ưu tiên model Flash đầy đủ (Lite chỉ là dự phòng); AI ghi lý do/phép tính cực ngắn ("tinh") TRƯỚC khi chọn, kể cả chế độ Nhanh.
   - Ảnh chế độ Nhanh 1100px (chữ có dấu rõ hơn). Chọn sai (thẻ/ô đỏ) được chọn lại tới 3 lần mỗi câu, tối đa 60 lần mỗi lượt chạy (trước là 12).
   - Bớt thời gian chờ cố định: vòng quét 70ms, chờ yên màn hình 150ms, kiểm tra sau chạm 180ms, nhịp kiểm tra cuộn 60ms.
+v1.9.16: SỬA CHẬM.
+  - Chế độ Nhanh quay lại ưu tiên Flash-Lite (Flash đầy đủ hay bị HTTP 429 hết hạn mức làm mỗi lượt chậm thêm); chế độ không-Nhanh vẫn Flash trước.
+  - AI báo thêm toạ độ nút "Câu sau/Tiếp theo" (nx, ny). Trang chỉ có một câu đã làm xong (nút nằm dưới câu): KHÔNG cuộn nữa, bấm thẳng nút.
+    (Trước đây app cuộn dư nhiều lần vì đồng hồ đếm giờ trên trang làm app tưởng trang vẫn đổi.) Không bấm nút Nộp bài/Hoàn thành.
+v1.9.17: THÊM 2 DẠNG TRẮC NGHIỆM (các dạng cũ giữ nguyên).
+  - Trắc nghiệm lựa chọn dạng thẻ có huy hiệu NHIỀU MÀU (A đỏ, B xanh, C vàng, D lục, "Chọn 1 đáp án"): nhận biết thẻ đã chọn bằng nền thẻ + viền thẻ
+    (không dùng màu huy hiệu vì mỗi phương án một màu). Huy hiệu cùng màu (xám/tím nhạt) vẫn xử lý như 1.9.14.
+  - Trắc nghiệm ĐÚNG/SAI: mỗi ý a), b), c), d) có hai nút ngang "Đúng" | "Sai". AI trả xs=[x nút Đúng, x nút Sai], ys=[y,y], chon="Đúng"/"Sai";
+    CaptureService.selectionButtons so màu nền + viền hai nút để biết đã chọn/chọn sai; chạm xong kiểm tra và bấm lại nếu chưa trúng.
+  - Nút qua trang nhận thêm dấu ▶ (vd "Sau ▶"), nút lùi nhận ◀ (vd "◀ Trước").
