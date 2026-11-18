@@ -21,7 +21,7 @@ object ClaudeClient {
     @Volatile var lastSwitch: String = ""
 
     // Một điểm cần chạm do AI chỉ ra trên ẢNH CHỤP: x, y chuẩn hoá 0..1000 (x từ trái sang, y từ trên xuống).
-    data class VTap(val x: Int, val y: Int, val label: String, val card: Boolean = false, val sib: List<Int> = emptyList(), val idx: Int = 0)
+    data class VTap(val x: Int, val y: Int, val label: String, val card: Boolean = false, val sib: List<Int> = emptyList(), val idx: Int = 0, val sibX: List<Int> = emptyList())
 
     // ids: các phần tử cần chạm; inputs: id ô nhập -> chữ cần gõ.
     data class Answer(val ids: List<Int>, val inputs: Map<Int, String>)
@@ -269,6 +269,8 @@ Liệt kê MỌI câu xuất hiện trong ảnh (kể cả câu chỉ hiện m�
 - "cuoi": toạ độ y mép dưới phương án cuối cùng nhìn thấy; ghi 1000 nếu phương án cuối bị cắt hoặc nằm sát đáy ảnh (cách đáy dưới 8% chiều cao ảnh, vì có thể còn phương án khác nằm ngoài ảnh).
 @@TINH@@- "chon": CHỈ khi câu hiện đủ (thấy dòng tiêu đề và đủ mọi phương án) và chưa chọn (dc=false): chữ cái A, B, C, D... của phương án ĐÚNG NHẤT theo thứ tự từ trên xuống. Câu phủ định (KHÔNG PHẢI/SAI/NGOẠI TRỪ) chọn phương án không thỏa điều kiện; câu lý thuyết vẫn phải chọn phương án phù hợp NHẤT, không được bỏ trống. Các trường hợp khác để "".
 - "nx", "ny" (nằm NGOÀI mảng "cau", ở cuối JSON): toạ độ x, y tâm nút chuyển sang câu/trang kế (như "Câu sau", "Tiếp theo", "Tiếp tục", mũi tên >) đang hiện trên màn hình; KHÔNG tính nút "Nộp bài", "Hoàn thành", "Kết thúc", "Câu trước"; không có nút đó thì ghi -1 cho cả hai.
+- DẠNG ĐÚNG/SAI: mỗi ý a), b), c), d)... là MỘT phần tử riêng trong "cau" ("so" = "a", "b"...), có hai nút nằm NGANG cùng một hàng là "Đúng" và "Sai". Khi đó: "xs" = [x tâm nút Đúng, x tâm nút Sai] (đúng thứ tự này, bất kể nút nào ở bên trái), "ys" = [y, y] (cùng y tâm hai nút), "x" = x tâm nút Đúng, "the" = false, "chon" = "Đúng" hoặc "Sai". "dau" = mép trên dòng nội dung của ý đó, "cuoi" = mép dưới hai nút. Nút ĐÃ chọn có nền đặc/đổi màu khác nút còn lại; cả hai cùng kiểu viền + nền trắng = CHƯA chọn. Câu đề chung phía trên (không có nút) không phải là một phần tử.
+- "xs": CHỈ dùng cho dạng Đúng/Sai ở trên; mọi dạng khác ghi mảng rỗng [].
 - "the": true nếu các phương án là THẺ/NÚT bo tròn có huy hiệu chữ cái A, B, C, D (không có ô tròn rỗng để tích); false nếu là ô tròn/ô vuông/radio để tích.
 - "x": toạ độ x của tâm các ô tròn/ô vuông phương án, hoặc tâm huy hiệu chữ cái ở bên trái thẻ (cùng một cột).
 - "ys": toạ độ y của tâm ô tròn (hoặc tâm huy hiệu chữ cái) của TỪNG phương án nhìn thấy, theo thứ tự từ trên xuống (tăng dần): phần tử thứ 1 là A, thứ 2 là B... Hãy đo riêng từng phương án (phương án dài 2 dòng thì khoảng cách lớn hơn). Làm cho MỌI câu, kể cả câu đã chọn hoặc chưa hiện đủ.
@@ -293,10 +295,11 @@ Chỉ liệt kê phần câu hỏi trắc nghiệm; bỏ qua thanh địa chỉ,
         if (mode == 0) gen.put("thinkingConfig", JSONObject().put("thinkingBudget", if (fast) 0 else 1024))
         if (mode == 1) gen.put("thinkingConfig", JSONObject().put("thinkingLevel", "low"))
         if (mode < 3) {
-            val names = listOf("so", "dc", "dau", "cuoi", "tinh", "chon", "the", "x", "ys")
+            val names = listOf("so", "dc", "dau", "cuoi", "tinh", "chon", "the", "x", "ys", "xs")
             val props = JSONObject().put("so", strProp()).put("dc", boolProp()).put("dau", intProp()).put("cuoi", intProp())
                 .put("chon", strProp()).put("the", boolProp()).put("x", intProp())
                 .put("ys", JSONObject().put("type", "ARRAY").put("items", intProp()))
+                .put("xs", JSONObject().put("type", "ARRAY").put("items", intProp()))
             props.put("tinh", strProp())
             val item = JSONObject().put("type", "OBJECT").put("properties", props)
                 .put("propertyOrdering", JSONArray(names))
@@ -363,8 +366,17 @@ Chỉ liệt kê phần câu hỏi trắc nghiệm; bỏ qua thanh địa chỉ,
                                 ys.add(e.optInt("y", -1))
                             }
                         }
-                        var listOk = ys.size >= 2 && x in 0..1000 && ys.all { it in 0..1000 }
-                        for (j in 1 until ys.size) if (ys[j] <= ys[j - 1]) listOk = false
+                        // Dạng ĐÚNG/SAI: hai nút nằm ngang (xs = [x nút Đúng, x nút Sai], ys = [y, y])
+                        val xa = o.optJSONArray("xs")
+                        val rowMode = xa != null && xa.length() == 2 && ys.size == 2
+                        val xsl = ArrayList<Int>()
+                        if (rowMode && xa != null) {
+                            xsl.add(xa.optInt(0, -1)); xsl.add(xa.optInt(1, -1))
+                            keys.clear(); keys.add("ĐÚNG"); keys.add("SAI")
+                        }
+                        var listOk = if (rowMode) (xsl.all { it in 0..1000 } && ys.all { it in 0..1000 } && Math.abs(ys[0] - ys[1]) <= 20)
+                            else (ys.size >= 2 && x in 0..1000 && ys.all { it in 0..1000 })
+                        if (!rowMode) for (j in 1 until ys.size) if (ys[j] <= ys[j - 1]) listOk = false
                         val complete = top >= 0 && bot <= 985 && ys.size >= 2
                         var sel = dcModel
                         val redIdx = ArrayList<Int>()
@@ -373,9 +385,9 @@ Chỉ liệt kê phần câu hỏi trắc nghiệm; bỏ qua thanh địa chỉ,
                             var unknown = false
                             var anySel = false
                             // Dạng THẺ (huy hiệu chữ A/B/C/D): không có ô tròn để đọc điểm ảnh, so màu huy hiệu + nền thẻ giữa các phương án.
-                            val cardSt = if (card) CaptureService.selectionCard(x, ys) else null
+                            val cardSt = if (rowMode) CaptureService.selectionButtons(xsl, ys) else if (card) CaptureService.selectionCard(x, ys) else null
                             for (j in ys.indices) {
-                                val r = if (card) cardSt?.getOrNull(j) else CaptureService.selectionAt(x, ys[j])
+                                val r = if (rowMode || card) cardSt?.getOrNull(j) else CaptureService.selectionAt(x, ys[j])
                                 if (r == null) unknown = true
                                 else if (r == 1) anySel = true
                                 else if (r == 2) { redIdx.add(j); redKeys.add(keys.getOrElse(j) { "${j + 1}" }) }
@@ -386,18 +398,22 @@ Chỉ liệt kê phần câu hỏi trắc nghiệm; bỏ qua thanh địa chỉ,
                         var tapped = false
                         if (complete && !sel) {
                             var pos = keys.indexOf(chon)
+                            if (pos < 0 && rowMode) pos = when (chon) { "Đ", "DUNG", "TRUE" -> 0; "S", "SAI", "FALSE" -> 1; else -> -1 }
                             if (pos < 0 && chon.isNotEmpty()) {
                                 val d = chon.toIntOrNull()
                                 if (d != null) pos = d - 1
                                 else if (chon.length == 1 && chon[0] in 'A'..'Z') pos = chon[0] - 'A'
                             }
                             if (listOk && chon.isNotEmpty() && pos in ys.indices && pos !in redIdx) {
-                                taps.add(VTap(x, ys[pos], "$so $chon", card, ys.toList(), pos))
+                                if (rowMode) taps.add(VTap(xsl[pos], ys[pos], "$so $chon", false, ys.toList(), pos, xsl.toList()))
+                                else taps.add(VTap(x, ys[pos], "$so $chon", card, ys.toList(), pos))
                                 tapped = true
                             } else {
                                 retry = true
                                 if (redIdx.isNotEmpty()) {
                                     need.add("Câu $so đã chọn SAI ở phương án ${redKeys.joinToString("/")} (ô tròn màu đỏ): bắt buộc dc=false và chọn phương án ĐÚNG KHÁC phương án đó.")
+                                } else if (rowMode) {
+                                    need.add("Ý $so đã hiện trọn trong ảnh và CHƯA nút Đúng/Sai nào được chọn: bắt buộc dc=false và \"chon\" là \"Đúng\" hoặc \"Sai\" (không để trống), xs = [x nút Đúng, x nút Sai].")
                                 } else {
                                     need.add("Câu $so đã hiện trọn trong ảnh và CHƯA có ô nào được chọn (các ô tròn đều còn trống): bắt buộc dc=false và chọn đáp án đúng nhất (\"chon\" không được để trống).")
                                 }
